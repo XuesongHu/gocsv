@@ -35,12 +35,20 @@ var TagName = "csv"
 // TagSeparator defines seperator string for multiple csv tags in struct fields
 var TagSeparator = ","
 
+// CSVParser defines a type that holds configs
+type CSVParser struct {
+	FailIfUnmatchedStructTags                       bool
+	FailIfDoubleHeaderNames                         bool
+	ShouldAlignDuplicateHeadersWithStructFieldOrder bool
+}
+
 // Normalizer is a function that takes and returns a string. It is applied to
 // struct and header field values before they are compared. It can be used to alter
 // names for comparison. For instance, you could allow case insensitive matching
 // or convert '-' to '_'.
 type Normalizer func(string) string
 
+// ErrorHandler defines a func type
 type ErrorHandler func(*csv.ParseError) bool
 
 // normalizeName function initially set to a nop Normalizer.
@@ -171,7 +179,7 @@ func UnmarshalFile(in *os.File, out interface{}) error {
 	return Unmarshal(in, out)
 }
 
-// UnmarshalFile parses the CSV from the file in the interface.
+// UnmarshalFileWithErrorHandler parses the CSV from the file in the interface.
 func UnmarshalFileWithErrorHandler(in *os.File, errHandler ErrorHandler, out interface{}) error {
 	return UnmarshalWithErrorHandler(in, errHandler, out)
 }
@@ -186,12 +194,22 @@ func UnmarshalBytes(in []byte, out interface{}) error {
 	return Unmarshal(bytes.NewReader(in), out)
 }
 
+// UnmarshalBytes parses the CSV from the bytes in the interface.
+func (p *CSVParser) UnmarshalBytes(in []byte, out interface{}) error {
+	return p.Unmarshal(bytes.NewReader(in), out)
+}
+
 // Unmarshal parses the CSV from the reader in the interface.
 func Unmarshal(in io.Reader, out interface{}) error {
 	return readTo(newSimpleDecoderFromReader(in), out)
 }
 
 // Unmarshal parses the CSV from the reader in the interface.
+func (p *CSVParser) Unmarshal(in io.Reader, out interface{}) error {
+	return p.readTo(newSimpleDecoderFromReader(in), out)
+}
+
+// UnmarshalWithErrorHandler parses the CSV from the reader in the interface.
 func UnmarshalWithErrorHandler(in io.Reader, errHandle ErrorHandler, out interface{}) error {
 	return readToWithErrorHandler(newSimpleDecoderFromReader(in), errHandle, out)
 }
