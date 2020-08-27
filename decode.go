@@ -128,6 +128,10 @@ func readTo(decoder Decoder, out interface{}) error {
 	return readToWithErrorHandler(decoder, nil, out)
 }
 
+func (p *CSVParser) readTo(decoder Decoder, out interface{}) error {
+	return p.readToWithErrorHandler(decoder, nil, out)
+}
+
 func readToWithErrorHandler(decoder Decoder, errHandler ErrorHandler, out interface{}) error {
 	outValue, outType := getConcreteReflectValueAndType(out) // Get the concrete type (not pointer) (Slice<?> or Array<?>)
 	if err := ensureOutType(outType); err != nil {
@@ -175,6 +179,105 @@ func readToWithErrorHandler(decoder Decoder, errHandler ErrorHandler, out interf
 		}
 	}
 	if FailIfDoubleHeaderNames {
+		if err := maybeDoubleHeaderNames(headers); err != nil {
+			return err
+		}
+	}
+
+	var withFieldsOK bool
+	var fieldTypeUnmarshallerWithKeys TypeUnmarshalCSVWithFields
+
+	for i, csvRow := range body {
+		objectIface := reflect.New(outValue.Index(i).Type()).Interface()
+		outInner := createNewOutInner(outInnerWasPointer, outInnerType)
+		for j, csvColumnContent := range csvRow {
+			if fieldInfo, ok := csvHeadersLabels[j]; ok { // Position found accordingly to header name
+
+				if outInner.CanInterface() {
+					fieldTypeUnmarshallerWithKeys, withFieldsOK = objectIface.(TypeUnmarshalCSVWithFields)
+					if withFieldsOK {
+						if err := fieldTypeUnmarshallerWithKeys.UnmarshalCSVWithFields(fieldInfo.getFirstKey(), csvColumnContent); err != nil {
+							parseError := csv.ParseError{
+								Line:   i + 2, //add 2 to account for the header & 0-indexing of arrays
+								Column: j + 1,
+								Err:    err,
+							}
+							return &parseError
+						}
+						continue
+					}
+				}
+
+				if err := setInnerField(&outInner, outInnerWasPointer, fieldInfo.IndexChain, csvColumnContent, fieldInfo.omitEmpty); err != nil { // Set field of struct
+					parseError := csv.ParseError{
+						Line:   i + 2, //add 2 to account for the header & 0-indexing of arrays
+						Column: j + 1,
+						Err:    err,
+					}
+					if errHandler == nil || !errHandler(&parseError) {
+						return &parseError
+					}
+				}
+			}
+		}
+
+		if withFieldsOK {
+			reflectedObject := reflect.ValueOf(objectIface)
+			outInner = reflectedObject.Elem()
+		}
+
+		outValue.Index(i).Set(outInner)
+	}
+	return nil
+}
+
+func (p *CSVParser) readToWithErrorHandler(decoder Decoder, errHandler ErrorHandler, out interface{}) error {
+	outValue, outType := getConcreteReflectValueAndType(out) // Get the concrete type (not pointer) (Slice<?> or Array<?>)
+	if err := ensureOutType(outType); err != nil {
+		return err
+	}
+	outInnerWasPointer, outInnerType := getConcreteContainerInnerType(outType) // Get the concrete inner type (not pointer) (Container<"?">)
+	if err := ensureOutInnerType(outInnerType); err != nil {
+		return err
+	}
+	csvRows, err := decoder.getCSVRows() // Get the CSV csvRows
+	if err != nil {
+		return err
+	}
+	if len(csvRows) == 0 {
+		return errors.New("empty csv file given")
+	}
+	if err := ensureOutCapacity(&outValue, len(csvRows)); err != nil { // Ensure the container is big enough to hold the CSV content
+		return err
+	}
+	outInnerStructInfo := getStructInfo(outInnerType) // Get the inner struct info to get CSV annotations
+	if len(outInnerStructInfo.Fields) == 0 {
+		return errors.New("no csv struct tags found")
+	}
+
+	headers := normalizeHeaders(csvRows[0])
+	body := csvRows[1:]
+
+	csvHeadersLabels := make(map[int]*fieldInfo, len(outInnerStructInfo.Fields)) // Used to store the correspondance header <-> position in CSV
+
+	headerCount := map[string]int{}
+	for i, csvColumnHeader := range headers {
+		curHeaderCount := headerCount[csvColumnHeader]
+		if fieldInfo := getCSVFieldPosition(csvColumnHeader, outInnerStructInfo, curHeaderCount); fieldInfo != nil {
+			csvHeadersLabels[i] = fieldInfo
+			if p.ShouldAlignDuplicateHeadersWithStructFieldOrder {
+				curHeaderCount++
+				headerCount[csvColumnHeader] = curHeaderCount
+			}
+		}
+	}
+
+	if p.FailIfUnmatchedStructTags {
+		if err := maybeMissingStructFields(outInnerStructInfo.Fields, headers); err != nil {
+			return err
+		}
+	}
+	if p.FailIfDoubleHeaderNames {
 		if err := maybeDoubleHeaderNames(headers); err != nil {
 			return err
 		}
