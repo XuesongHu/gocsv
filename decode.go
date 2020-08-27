@@ -265,7 +265,7 @@ func (p *CSVParser) readToWithErrorHandler(decoder Decoder, errHandler ErrorHand
 		curHeaderCount := headerCount[csvColumnHeader]
 		if fieldInfo := getCSVFieldPosition(csvColumnHeader, outInnerStructInfo, curHeaderCount); fieldInfo != nil {
 			csvHeadersLabels[i] = fieldInfo
-			if ShouldAlignDuplicateHeadersWithStructFieldOrder {
+			if p.ShouldAlignDuplicateHeadersWithStructFieldOrder {
 				curHeaderCount++
 				headerCount[csvColumnHeader] = curHeaderCount
 			}
