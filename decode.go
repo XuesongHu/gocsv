@@ -32,6 +32,10 @@ func newSimpleDecoderFromReader(r io.Reader) SimpleDecoder {
 	return csvDecoder{getCSVReader(r)}
 }
 
+func (p *CSVParser) newSimpleDecoderFromReader(r io.Reader) SimpleDecoder {
+	return csvDecoder{p.getCSVReader(r)}
+}
+
 // NewSimpleDecoderFromCSVReader creates a SimpleDecoder, which may be passed
 // to the UnmarshalDecoder* family of functions, from a CSV reader. Note that
 // encoding/csv.Reader implements CSVReader, so you can pass one of those

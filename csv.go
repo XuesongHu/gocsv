@@ -40,6 +40,7 @@ type CSVParser struct {
 	FailIfUnmatchedStructTags                       bool
 	FailIfDoubleHeaderNames                         bool
 	ShouldAlignDuplicateHeadersWithStructFieldOrder bool
+	selfCSVReader                                   func(in io.Reader) CSVReader
 }
 
 // Normalizer is a function that takes and returns a string. It is applied to
@@ -114,8 +115,17 @@ func SetCSVReader(csvReader func(io.Reader) CSVReader) {
 	selfCSVReader = csvReader
 }
 
+// SetCSVReader sets the CSV reader used to parse CSV.
+func (p *CSVParser) SetCSVReader(csvReader func(io.Reader) CSVReader) {
+	p.selfCSVReader = csvReader
+}
+
 func getCSVReader(in io.Reader) CSVReader {
 	return selfCSVReader(in)
+}
+
+func (p *CSVParser) getCSVReader(in io.Reader) CSVReader {
+	return p.selfCSVReader(in)
 }
 
 // --------------------------------------------------------------------------
@@ -206,7 +216,7 @@ func Unmarshal(in io.Reader, out interface{}) error {
 
 // Unmarshal parses the CSV from the reader in the interface.
 func (p *CSVParser) Unmarshal(in io.Reader, out interface{}) error {
-	return p.readTo(newSimpleDecoderFromReader(in), out)
+	return p.readTo(p.newSimpleDecoderFromReader(in), out)
 }
 
 // UnmarshalWithErrorHandler parses the CSV from the reader in the interface.
